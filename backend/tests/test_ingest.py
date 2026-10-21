@@ -20,7 +20,8 @@ def write(tmp: Path, rows, uf=None):
     with u.open("w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(["month", "uf_10th"])
-        w.writerows(uf or [("2024-01", "36000.00"), ("2024-02", "36360.00"), ("2024-03", "36720.00"), ("2024-04", "37000.00")])
+        w.writerows(uf or [("2024-01", "36000.00"), ("2024-02", "36360.00"),
+                           ("2024-03", "36720.00"), ("2024-04", "37000.00")])
     return p, u
 
 

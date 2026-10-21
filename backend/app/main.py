@@ -10,6 +10,7 @@ from app.core.config import get_settings
 from app.core.middleware import HardeningMiddleware
 from app.engine.cmf_rates import RateNotFoundError
 from app.services.extractor import ExtractionError
+from app.services.generator import PdfUnavailableError
 
 
 def _err(status: int, msg: str) -> JSONResponse:
@@ -39,6 +40,10 @@ def create_app() -> FastAPI:
     @app.exception_handler(RateNotFoundError)
     async def _rates(_: Request, exc: RateNotFoundError):
         return _err(422, str(exc))
+
+    @app.exception_handler(PdfUnavailableError)
+    async def _pdf(_: Request, exc: PdfUnavailableError):
+        return _err(501, str(exc))
 
     @app.exception_handler(ValueError)
     async def _value(_: Request, exc: ValueError):

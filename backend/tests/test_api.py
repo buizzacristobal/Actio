@@ -114,3 +114,35 @@ def test_hardening_headers_rate_limit_and_body_cap(monkeypatch):
     assert codes == [200, 200, 200, 429]
     big = TestClient(create_app()).post("/api/v1/extract", json={"text": "x" * 2000})
     assert big.status_code == 413
+
+
+def test_preview_and_edited_generation(client):
+    body = {"instrument": PAGARE, "attorney": ATT, "cutoff_date": "2024-04-20",
+            "assets": ["Vehículo PPU ABCD12"]}
+    r = client.post("/api/v1/preview-lawsuit", json=body)
+    assert r.status_code == 200
+    j = r.json()
+    assert j["blocks"][0]["kind"] == "banner" and j["notes"]
+    assert any("Vehículo PPU ABCD12" in b["text"] for b in j["blocks"])
+    edited = [{**b, "text": b["text"] + " [rev]"} if b["kind"] == "paragraph" else b for b in j["blocks"]]
+    r = client.post("/api/v1/generate-lawsuit", json={**body, "edited_blocks": edited})
+    assert r.status_code == 200
+    txt = "\n".join(p.text for p in Document(BytesIO(r.content)).paragraphs)
+    assert "[rev]" in txt and "BORRADOR" in txt
+
+
+def test_pdf_output_or_501(client):
+    import shutil
+    body = {"instrument": PAGARE, "attorney": ATT, "cutoff_date": "2024-04-20", "format": "pdf"}
+    r = client.post("/api/v1/generate-lawsuit", json=body)
+    if shutil.which("soffice") or shutil.which("libreoffice"):
+        assert r.status_code == 200 and r.content.startswith(b"%PDF")
+    else:
+        assert r.status_code == 501
+
+
+def test_pdf_501_when_libreoffice_missing(client, monkeypatch):
+    import shutil
+    monkeypatch.setattr(shutil, "which", lambda _: None)
+    body = {"instrument": PAGARE, "attorney": ATT, "cutoff_date": "2024-04-20", "format": "pdf"}
+    assert client.post("/api/v1/generate-lawsuit", json=body).status_code == 501

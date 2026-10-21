@@ -5,6 +5,8 @@ is a DRAFT for attorney review; citations must be verified before filing.
 """
 from __future__ import annotations
 
+import re
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
@@ -145,7 +147,9 @@ def _law(instr: Instrument) -> list[str]:
     if isinstance(instr, Pagare):
         base.append("El pagaré se rige por la Ley N° 18.092 y, en lo pertinente, por las "
                     "reglas de la letra de cambio; su suscripción consta en el título que se "
-                    "acompaña (art. 434 N° 4 CPC; arts. 102 y siguientes de la Ley N° 18.092).")
+                    "acompaña (art. 434 N° 4 CPC; arts. 102 y siguientes de la Ley N° 18.092)."
+                    + (" La firma del deudor se encuentra autorizada ante notario."
+                       if instr.signature_authorized else ""))
     else:
         base.append("La factura electrónica tiene mérito ejecutivo conforme al artículo 434 "
                     "N° 7 del Código de Procedimiento Civil, en relación con el artículo 5 de "
@@ -154,6 +158,45 @@ def _law(instr: Instrument) -> list[str]:
     base.append("Los intereses se devengan conforme a la Ley N° 18.010, sin exceder la tasa "
                 "máxima convencional.")
     return base
+
+
+def _assets_text(assets: Sequence[str]) -> str:
+    clean = [a.strip() for a in assets if a.strip()]
+    if not clean:
+        return ("Solicito a US. tener presente que, sin perjuicio de lo que se señale en la "
+                "oportunidad correspondiente, se designan para la traba del embargo los bienes "
+                "que se indicarán por escrito separado.")
+    listing = "; ".join(f"{i}) {a}" for i, a in enumerate(clean, 1))
+    return ("Solicito a US. tener presente que se señalan para la traba del embargo los "
+            f"siguientes bienes del deudor: {listing}.")
+
+
+_COMPANY = re.compile(r"\b(SPA|S\.A\.|SA|LTDA|LIMITADA|E\.I\.R\.L|EIRL|SOCIEDAD|COMPAÑ[IÍ]A)\b", re.I)
+
+
+def drafting_notes(instr: Instrument, ledger: LiquidationLedger, assets: Sequence[str] = ()) -> list[str]:
+    """Checks the attorney should do before filing; shown in the preview and the last page."""
+    notes: list[str] = []
+    if isinstance(instr, Pagare):
+        if not instr.signature_authorized:
+            notes.append("Pagaré: confirme que la firma del deudor está autorizada ante notario "
+                         "(art. 434 N° 4 CPC); si no lo está, puede requerirse una gestión preparatoria "
+                         "de reconocimiento de firma antes de demandar.")
+    else:
+        if not instr.receipt_acknowledged:
+            notes.append("Factura: acredite el recibo de las mercaderías o servicios (Ley 19.983) "
+                         "y que la factura no fue reclamada dentro de ocho días corridos.")
+    if not [a for a in assets if a.strip()]:
+        notes.append("Segundo otrosí: no se indicaron bienes para el embargo; complételos o señálelos "
+                     "por escrito separado.")
+    if _COMPANY.search(instr.creditor.name) and not instr.creditor_representatives:
+        notes.append("El acreedor parece una persona jurídica y no se indicó representante: "
+                     "agregue el tercer otrosí «Acredita personería» con los antecedentes.")
+    if not ledger.rate_table_verified:
+        notes.append("Las tasas CMF y valores UF usados NO están verificados; "
+                     "reemplácelos antes de presentar.")
+    notes.append(f"Base de cálculo {ledger.day_count.value}: confirme la convención aplicable.")
+    return notes
 
 
 def _otrosi_label(i: int) -> str:
@@ -175,7 +218,9 @@ def _interest_text(comp: str | None, mor: str, ledger: LiquidationLedger) -> str
     return f"más {mor} por concepto de {_MORA} calculados al {until}, {tail}"
 
 
-def build_lawsuit(instr: Instrument, ledger: LiquidationLedger, attorney: Attorney) -> list[Block]:
+def build_lawsuit(
+    instr: Instrument, ledger: LiquidationLedger, attorney: Attorney, assets: Sequence[str] = ()
+) -> list[Block]:
     if instr.jurisdiction is None:
         raise ValueError("El tribunal competente (jurisdiction) es obligatorio")
     reps: list[LegalRepresentative] = instr.creditor_representatives
@@ -191,10 +236,7 @@ def build_lawsuit(instr: Instrument, ledger: LiquidationLedger, attorney: Attorn
          [f"Solicito a US. tener por acompañado el {title.lower()} que sirve de título "
           f"ejecutivo conforme al {_citation(instr)}, y disponer su custodia en el tribunal, "
           f"junto con la liquidación de la deuda."]),
-        ("Señala bienes para la traba del embargo",
-         ["Solicito a US. tener presente que, sin perjuicio de lo que se señale en la "
-          "oportunidad correspondiente, se designan para la traba del embargo los bienes "
-          "que se indicarán por escrito separado."]),
+        ("Señala bienes para la traba del embargo", [_assets_text(assets)]),
     ]
     if reps:
         otrosies.append(("Acredita personería",

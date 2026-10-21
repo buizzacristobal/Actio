@@ -2,7 +2,13 @@
 Times New Roman 12, 1.5 line spacing, justified)."""
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
+import tempfile
+from collections.abc import Sequence
 from io import BytesIO
+from pathlib import Path
 
 from docx import Document
 from docx.document import Document as DocumentT
@@ -11,8 +17,10 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.shared import Cm, Pt, RGBColor
 
 from app.engine.legal_templates import (
+    BANNER,
     Block,
     build_lawsuit,
+    drafting_notes,
     fmt_clp,
     fmt_date,
     fmt_pct,
@@ -95,20 +103,57 @@ def _schedule(doc: DocumentT, ledger: LiquidationLedger) -> None:
     if paid_days:
         _para(doc, "Abonos imputados (primero a intereses, luego a capital — art. 1595 Código Civil): "
                    + "; ".join(f"{fmt_date(d.date)}: {money(d.payment)}" for d in paid_days) + ".")
-    _para(doc, f"Capital: {fmt_clp(ledger.principal_clp)} — Intereses: "
-               f"{fmt_clp(ledger.interest_clp)} — TOTAL: {fmt_clp(ledger.total_clp)}",
-          bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+    total = _para(doc, f"Capital: {fmt_clp(ledger.principal_clp)} — Intereses: "
+                       f"{fmt_clp(ledger.interest_clp)} — TOTAL: {fmt_clp(ledger.total_clp)}",
+                  bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)
+    total.paragraph_format.space_before = Pt(12)
     for w in ledger.warnings:
         _para(doc, f"Advertencia: {w}", align=WD_ALIGN_PARAGRAPH.LEFT,
               color=RGBColor(0xC0, 0x00, 0x00))
 
 
-def generate_lawsuit_docx(instr: Instrument, ledger: LiquidationLedger,
-                          attorney: Attorney) -> bytes:
+def ensure_banner(blocks: Sequence[Block]) -> list[Block]:
+    """Edited drafts must keep the BORRADOR banner."""
+    rest = [b for b in blocks if b.kind != "banner"]
+    return [Block("banner", BANNER), *rest]
+
+
+def generate_lawsuit_docx(
+    instr: Instrument, ledger: LiquidationLedger, attorney: Attorney, *,
+    assets: Sequence[str] = (), blocks: Sequence[Block] | None = None,
+) -> bytes:
     doc = Document()
     _style(doc)
-    _render_blocks(doc, build_lawsuit(instr, ledger, attorney))
+    _render_blocks(doc, ensure_banner(blocks) if blocks is not None
+                   else build_lawsuit(instr, ledger, attorney, assets))
     _schedule(doc, ledger)
+    doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
+    _para(doc, "NOTAS PARA EL ABOGADO (eliminar antes de presentar)", bold=True,
+          align=WD_ALIGN_PARAGRAPH.LEFT, color=RGBColor(0xC0, 0x00, 0x00))
+    for note in drafting_notes(instr, ledger, assets):
+        _para(doc, f"• {note}", align=WD_ALIGN_PARAGRAPH.LEFT)
     buf = BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+class PdfUnavailableError(RuntimeError):
+    """LibreOffice (soffice) is not installed on this server."""
+
+
+def docx_to_pdf(docx_bytes: bytes, timeout: int = 90) -> bytes:
+    soffice = shutil.which("soffice") or shutil.which("libreoffice")
+    if soffice is None:
+        raise PdfUnavailableError("Conversión a PDF no disponible: instale LibreOffice en el servidor")
+    with tempfile.TemporaryDirectory() as tmp:
+        src = Path(tmp) / "demanda.docx"
+        src.write_bytes(docx_bytes)
+        subprocess.run(
+            [soffice, "--headless", "--convert-to", "pdf", "--outdir", tmp, str(src)],
+            check=False, capture_output=True, timeout=timeout,
+            env={**os.environ, "HOME": tmp},  # private LibreOffice profile; nothing persists
+        )
+        out = Path(tmp) / "demanda.pdf"
+        if not out.exists():
+            raise PdfUnavailableError("LibreOffice Writer no pudo convertir el documento")
+        return out.read_bytes()

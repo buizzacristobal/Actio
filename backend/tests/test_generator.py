@@ -6,7 +6,7 @@ import pytest
 from docx import Document
 
 from app.engine.calculator import calculate_day_by_day_ledger
-from app.engine.legal_templates import build_lawsuit, fmt_clp, fmt_date, fmt_uf
+from app.engine.legal_templates import build_lawsuit, drafting_notes, fmt_clp, fmt_date, fmt_uf
 from app.schemas.instrument import Attorney, CourtJurisdiction, Pagare
 from app.schemas.liquidation import Currency, DayCount, LiquidationParams
 from app.services.generator import generate_lawsuit_docx
@@ -55,7 +55,7 @@ def test_docx_content_and_typography():
                    "PETITORIO", "PRIMER OTROSÍ", "SEGUNDO OTROSÍ", "TERCER OTROSÍ: Patrocinio",
                    "$1.000.000", "$38.795", "$1.038.795", "ANEXO", "María Soto"):
         assert needle in txt, needle
-    assert "Acredita personería" not in txt  # no representatives -> omitted
+    assert "TERCER OTROSÍ: Acredita personería" not in txt  # no representatives -> omitted
     normal = doc.styles["Normal"]
     assert normal.font.name == "Times New Roman" and normal.font.size.pt == 12
     assert normal.paragraph_format.line_spacing == 1.5
@@ -170,3 +170,34 @@ def test_lawsuit_with_payments_states_abonos_and_outstanding():
     assert "abonos por un total de $20.000" in txt and "artículo 1595 del Código Civil" in txt
     assert "pagaré por $1.000.000" in txt and "por la suma de $988.219 por concepto de capital" in txt
     assert "compensatorios" not in txt
+
+
+def test_assets_listed_in_second_otrosi_and_notes():
+    p = pagare()
+    led = ledger_for(p)
+    txt = doc_text(build_lawsuit(p, led, ATT, assets=["Vehículo PPU ABCD12", "Cuenta corriente Banco X"]))
+    assert "siguientes bienes del deudor: 1) Vehículo PPU ABCD12; 2) Cuenta corriente Banco X." in txt
+    assert not any("no se indicaron bienes" in n for n in drafting_notes(p, led, ["x"]))
+    assert any("no se indicaron bienes" in n for n in drafting_notes(p, led, []))
+
+
+def test_drafting_notes_signature_and_factura():
+    p = pagare()
+    assert any("autorizada ante notario" in n for n in drafting_notes(p, ledger_for(p)))
+    signed = pagare(signature_authorized=True)
+    led = ledger_for(signed)
+    assert not any("autorizada ante notario" in n for n in drafting_notes(signed, led))
+    assert "firma del deudor se encuentra autorizada ante notario" in doc_text(
+        build_lawsuit(signed, led, ATT))
+    f = factura()
+    assert any("recibo de las mercaderías" in n for n in drafting_notes(f, factura_ledger(f)))
+
+
+def test_generated_docx_includes_notes_page_and_edited_blocks_keep_banner():
+    from app.engine.legal_templates import Block
+    p = pagare()
+    led = ledger_for(p)
+    data = generate_lawsuit_docx(p, led, ATT, blocks=[Block("paragraph", "TEXTO EDITADO")])
+    txt = text_of(data)
+    assert "TEXTO EDITADO" in txt and "BORRADOR" in txt and "NOTAS PARA EL ABOGADO" in txt
+    assert "HECHOS" not in txt  # replaced by the attorney's text
