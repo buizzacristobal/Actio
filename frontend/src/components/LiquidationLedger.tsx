@@ -1,9 +1,9 @@
 "use client";
-import { ArrowLeft, ArrowRight, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Printer, RefreshCw, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { liquidate, paramsOf } from "@/lib/api";
 import { CATEGORY_LABEL, fmtClp, fmtMoney, fmtPct, fmtUf } from "@/lib/format";
-import type { DayCount, Instrument, Ledger } from "@/lib/types";
+import type { DayCount, Instrument, Ledger, Payment } from "@/lib/types";
 import { Alert } from "./Alert";
 import { Field, SelectField } from "./ui/Field";
 
@@ -16,6 +16,8 @@ interface Props {
   onBack: () => void;
   onNext: () => void;
   ledger: Ledger | null;
+  payments: Payment[];
+  onPayments: (p: Payment[]) => void;
 }
 
 function Stat({ label, value, strong }: { label: string; value: string; strong?: boolean }) {
@@ -27,7 +29,7 @@ function Stat({ label, value, strong }: { label: string; value: string; strong?:
   );
 }
 
-export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLedger, onBack, onNext, ledger }: Props) {
+export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLedger, onBack, onNext, ledger, payments, onPayments }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [daily, setDaily] = useState(false);
@@ -37,10 +39,12 @@ export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLe
     setError(null);
     setBusy(true);
     try {
-      const p = paramsOf(instrument, cutoff, dayCount);
+      const p = paramsOf(instrument, cutoff, dayCount, payments);
       if (p.maturity_date < p.issue_date) throw new Error("El vencimiento es anterior a la emisión.");
       if (p.cutoff_date < p.maturity_date) throw new Error("La fecha de corte es anterior al vencimiento.");
       if (!(Number(p.principal) > 0)) throw new Error("El capital debe ser mayor a cero.");
+      for (const x of p.payments ?? [])
+        if (x.date <= p.issue_date || x.date > p.cutoff_date) throw new Error(`El abono del ${x.date} debe ser posterior a la emisión y no posterior al corte.`);
       onLedger(await liquidate(p));
     } catch (e) {
       onLedger(null);
@@ -62,7 +66,7 @@ export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLe
         <h2 className="text-xl font-semibold">2. Liquidación de la deuda</h2>
         <p className="mt-1 text-sm text-ink-600">Ajuste los parámetros y recalcule. El tramo de tasa se determina por el monto en UF a la fecha de emisión.</p>
       </div>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="no-print grid gap-4 sm:grid-cols-3">
         {isPagare && (
           <>
             <Field label={`Capital (${instrument.currency})`} value={instrument.amount} inputMode="decimal" onChange={(e) => set({ amount: e.target.value })} />
@@ -77,7 +81,21 @@ export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLe
           <option>ACT/360</option><option>ACT/365</option>
         </SelectField>
       </div>
-      <button className="btn" disabled={busy} onClick={run}>
+      <fieldset className="no-print space-y-3">
+        <div className="flex items-center justify-between">
+          <legend className="text-sm font-semibold">Abonos recibidos <span className="font-normal text-ink-500">(se imputan primero a intereses, luego a capital)</span></legend>
+          <button className="btn-ghost !py-1.5" onClick={() => onPayments([...payments, { date: "", amount: "" }])}><Plus className="h-4 w-4" aria-hidden />Agregar abono</button>
+        </div>
+        {payments.map((x, n) => (
+          <div key={n} className="grid items-end gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <Field label="Fecha del abono" type="date" value={x.date} onChange={(e) => onPayments(payments.map((y, k) => (k === n ? { ...y, date: e.target.value } : y)))} />
+            <Field label={`Monto (${cur === "UF" || (isPagare && instrument.currency === "UF") ? "UF" : "CLP"})`} inputMode="decimal" value={x.amount}
+              onChange={(e) => onPayments(payments.map((y, k) => (k === n ? { ...y, amount: e.target.value } : y)))} />
+            <button className="btn-ghost" aria-label={`Quitar abono ${n + 1}`} onClick={() => onPayments(payments.filter((_, k) => k !== n))}><Trash2 className="h-4 w-4" aria-hidden /></button>
+          </div>
+        ))}
+      </fieldset>
+      <button className="btn no-print" disabled={busy} onClick={run}>
         <RefreshCw className={`h-4 w-4 ${busy ? "animate-spin" : ""}`} aria-hidden />{busy ? "Calculando…" : "Recalcular"}
       </button>
       {error && <Alert>{error}</Alert>}
@@ -90,17 +108,20 @@ export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLe
             <span className="text-xs text-ink-500">Base {ledger.day_count}</span>
           </div>
           <dl className="grid gap-3 sm:grid-cols-3">
-            <Stat label="Capital" value={fmtClp(ledger.principal_clp)} />
+            <Stat label={Number(ledger.payments_total) > 0 ? "Capital (saldo)" : "Capital"} value={fmtClp(ledger.principal_clp)} />
             <Stat label="Intereses" value={fmtClp(ledger.interest_clp)} />
             <Stat label="Total" value={fmtClp(ledger.total_clp)} strong />
           </dl>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-base font-semibold">{daily ? "Detalle día por día" : "Detalle mensual"}</h3>
-            <label className="flex cursor-pointer items-center gap-2 text-sm">
-              <input type="checkbox" className="accent-gold-500" checked={daily} onChange={(e) => setDaily(e.target.checked)} /> Ver día por día
-            </label>
+            <div className="no-print flex items-center gap-4">
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <input type="checkbox" className="accent-gold-500" checked={daily} onChange={(e) => setDaily(e.target.checked)} /> Ver día por día
+              </label>
+              <button className="btn-ghost !py-1.5" onClick={() => window.print()}><Printer className="h-4 w-4" aria-hidden />Imprimir planilla</button>
+            </div>
           </div>
-          <div className="max-h-[26rem] overflow-auto rounded-lg border border-line">
+          <div tabIndex={0} role="region" aria-label="Planilla de liquidación" className="max-h-[26rem] overflow-auto rounded-lg border border-line print:max-h-none">
             <table className="w-full text-sm tabular-nums">
               <thead className="sticky top-0 bg-ink-900 text-xs uppercase tracking-wide text-white">
                 {daily ? (
@@ -133,7 +154,7 @@ export function LiquidationLedger({ instrument, cutoff, dayCount, onChange, onLe
           {cur === "UF" && <p className="text-xs text-ink-500">Capital {fmtUf(ledger.params.principal)}; montos en UF, equivalente en $ al corte.</p>}
         </div>
       )}
-      <div className="flex gap-3 border-t border-line pt-5">
+      <div className="no-print flex gap-3 border-t border-line pt-5">
         <button className="btn-ghost" onClick={onBack}><ArrowLeft className="h-4 w-4" aria-hidden />Volver</button>
         <button className="btn-gold" disabled={!ledger} onClick={onNext}>Continuar <ArrowRight className="h-4 w-4" aria-hidden /></button>
       </div>

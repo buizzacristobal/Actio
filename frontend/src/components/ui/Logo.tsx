@@ -8,7 +8,7 @@ export function Logo({ light = false }: { light?: boolean }) {
         <Scale className="h-5 w-5" aria-hidden />
       </span>
       <span className={`font-serif text-lg font-semibold leading-none ${light ? "text-white" : "text-ink-900"}`}>
-        LegalTech <span className="text-gold-500">Chile</span>
+        LegalTech <span className={light ? "text-gold-400" : "text-gold-600"}>Chile</span>
       </span>
     </Link>
   );

@@ -1,0 +1,53 @@
+{
+ "pagare": {
+  "kind": "pagare",
+  "amount": "1000000",
+  "currency": "CLP",
+  "issue_date": "2024-01-20",
+  "maturity_date": "2024-03-20",
+  "agreed_rate_annual": "24",
+  "creditor": {
+   "name": "Banco Ejemplo SpA",
+   "rut": "76.086.428-5",
+   "address": "Av. Apoquindo 1000",
+   "commune": "Las Condes"
+  },
+  "debtor": {
+   "name": "Juan Pérez González",
+   "rut": "12.345.678-5",
+   "address": "Los Olmos 123",
+   "commune": "Ñuñoa"
+  },
+  "jurisdiction": {
+   "court_name": "12° Juzgado Civil de Santiago",
+   "city": "Santiago"
+  },
+  "signature_authorized": true
+ },
+ "factura": {
+  "kind": "factura",
+  "folio": "1234",
+  "net_amount": "1000000",
+  "vat_amount": "190000",
+  "total_amount": "1190000",
+  "issue_date": "2024-01-20",
+  "due_date": "2024-03-20",
+  "receipt_acknowledged": true,
+  "creditor": {
+   "name": "Banco Ejemplo SpA",
+   "rut": "76.086.428-5",
+   "address": "Av. Apoquindo 1000",
+   "commune": "Las Condes"
+  },
+  "debtor": {
+   "name": "Juan Pérez González",
+   "rut": "12.345.678-5",
+   "address": "Los Olmos 123",
+   "commune": "Ñuñoa"
+  },
+  "jurisdiction": {
+   "court_name": "12° Juzgado Civil de Santiago",
+   "city": "Santiago"
+  }
+ }
+}

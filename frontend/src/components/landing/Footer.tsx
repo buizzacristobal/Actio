@@ -11,7 +11,10 @@ export function Footer() {
             firmados por un abogado habilitado. El sistema no presenta escritos en la Oficina Judicial Virtual.
           </p>
         </div>
-        <p className="text-xs text-ink-500">© {new Date().getFullYear()} LegalTech Chile · Prototipo</p>
+        <div className="space-y-2 text-xs text-ink-500 sm:text-right">
+          <p><a href="/privacidad" className="underline underline-offset-2 hover:text-ink-900">Privacidad y datos</a></p>
+          <p>© {new Date().getFullYear()} LegalTech Chile · Prototipo</p>
+        </div>
       </div>
     </footer>
   );
