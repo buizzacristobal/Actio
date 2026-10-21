@@ -91,6 +91,10 @@ def _schedule(doc: DocumentT, ledger: LiquidationLedger) -> None:
                 for r in para.runs:
                     r.font.size = Pt(10)
                     r.font.name = FONT
+    paid_days = [d for d in ledger.days if d.payment > 0]
+    if paid_days:
+        _para(doc, "Abonos imputados (primero a intereses, luego a capital — art. 1595 Código Civil): "
+                   + "; ".join(f"{fmt_date(d.date)}: {money(d.payment)}" for d in paid_days) + ".")
     _para(doc, f"Capital: {fmt_clp(ledger.principal_clp)} — Intereses: "
                f"{fmt_clp(ledger.interest_clp)} — TOTAL: {fmt_clp(ledger.total_clp)}",
           bold=True, align=WD_ALIGN_PARAGRAPH.LEFT)

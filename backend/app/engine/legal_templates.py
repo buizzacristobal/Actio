@@ -64,10 +64,20 @@ def _title(instr: Instrument) -> tuple[str, str]:
 def _money(instr: Instrument, ledger: LiquidationLedger) -> tuple[str, str]:
     """(capital text, interest text) in the instrument's native currency."""
     if ledger.params.currency is Currency.UF:
-        return (f"{fmt_uf(ledger.params.principal)} ({fmt_clp(ledger.principal_clp)} al "
+        return (f"{fmt_uf(ledger.capital_native)} ({fmt_clp(ledger.principal_clp)} al "
                 f"{fmt_date(ledger.params.cutoff_date)})",
                 f"{fmt_uf(ledger.interest_native)} ({fmt_clp(ledger.interest_clp)})")
     return fmt_clp(ledger.principal_clp), fmt_clp(ledger.interest_clp)
+
+
+def _original(ledger: LiquidationLedger) -> str:
+    p = ledger.params
+    return fmt_uf(p.principal) if p.currency is Currency.UF else fmt_clp(p.principal)
+
+
+def _paid(ledger: LiquidationLedger) -> str:
+    return (fmt_uf(ledger.payments_total) if ledger.params.currency is Currency.UF
+            else fmt_clp(ledger.payments_total))
 
 
 def _interest_parts(ledger: LiquidationLedger) -> tuple[str | None, str]:
@@ -98,23 +108,31 @@ def _facts(instr: Instrument, ledger: LiquidationLedger) -> list[str]:
     comp, mor = _interest_parts(ledger)
     p = ledger.params
     cname = instr.creditor.name
+    orig = _original(ledger)
+    paid = ledger.payments_total > 0
     out: list[str]
     if isinstance(instr, Pagare):
         rate = (f" pactándose un interés anual de {fmt_pct(instr.agreed_rate_annual)},"
                 if instr.agreed_rate_annual is not None else "")
         out = [f"1. Con fecha {fmt_date(instr.issue_date)}, don(ña) {instr.debtor.name} suscribió "
-               f"a favor de {cname} un pagaré por {cap},{rate} pagadero el "
+               f"a favor de {cname} un pagaré por {orig},{rate} pagadero el "
                f"{fmt_date(instr.maturity_date)}."]
     else:
         due = fmt_date(instr.due_date) if instr.due_date else fmt_date(p.maturity_date)
         out = [f"1. {cname} emitió la factura electrónica folio N° {instr.folio}, con "
                f"fecha {fmt_date(instr.issue_date)}, a cargo de {instr.debtor.name}, por "
-               f"{cap}, con vencimiento el {due}."]
+               f"{orig}, con vencimiento el {due}."]
     out.append(f"2. El deudor no ha pagado el título, encontrándose en mora desde el "
                f"{fmt_date(p.maturity_date + timedelta(days=1))}.")
-    detail = (f"correspondientes a {_COMP} por {comp} e {_MORA} por {mor}, devengados a esa fecha"
-              if comp else f"correspondientes a {_MORA}, devengados a esa fecha")
-    out.append(f"3. Según la liquidación que se acompaña (anexo), al {fmt_date(p.cutoff_date)} "
+    if paid:
+        out.append(f"3. El deudor ha efectuado abonos por un total de {_paid(ledger)}, imputados "
+                   f"primero a intereses y luego a capital (artículo 1595 del Código Civil).")
+        detail = "correspondientes a intereses devengados y no pagados, devengados a esa fecha"
+    else:
+        detail = (f"correspondientes a {_COMP} por {comp} e {_MORA} por {mor}, devengados a esa fecha"
+                  if comp else f"correspondientes a {_MORA}, devengados a esa fecha")
+    out.append(f"{4 if paid else 3}. Según la liquidación que se acompaña (anexo), al "
+               f"{fmt_date(p.cutoff_date)} "
                f"se adeuda por capital {cap} e intereses por un total de {intr}, {detail}, "
                f"sin perjuicio de los intereses moratorios que se devenguen hasta el pago efectivo.")
     return out
@@ -146,6 +164,15 @@ def _citation(instr: Instrument) -> str:
     if isinstance(instr, Pagare):
         return "artículo 434 N° 4 del Código de Procedimiento Civil y Ley N° 18.092"
     return "artículo 434 N° 7 del Código de Procedimiento Civil y Ley N° 19.983"
+
+
+def _interest_text(comp: str | None, mor: str, ledger: LiquidationLedger) -> str:
+    until = fmt_date(ledger.params.cutoff_date)
+    tail = "más los intereses moratorios que se devenguen hasta el pago efectivo"
+    if comp:
+        return (f"más {comp} por concepto de {_COMP}, más {mor} por concepto de {_MORA} "
+                f"calculados al {until}, {tail}")
+    return f"más {mor} por concepto de {_MORA} calculados al {until}, {tail}"
 
 
 def build_lawsuit(instr: Instrument, ledger: LiquidationLedger, attorney: Attorney) -> list[Block]:
@@ -187,13 +214,14 @@ def build_lawsuit(instr: Instrument, ledger: LiquidationLedger, attorney: Attorn
     suma = ("EN LO PRINCIPAL: Demanda ejecutiva y mandamiento de ejecución y embargo; "
             + "; ".join(f"{_otrosi_label(i)}: {t}" for i, (t, _) in enumerate(otrosies)) + ".")
 
-    interest_petition = (
-        f"más {comp} por concepto de {_COMP}, más {mor} por concepto de {_MORA} "
-        f"calculados al {fmt_date(ledger.params.cutoff_date)}, más los intereses moratorios "
-        f"que se devenguen hasta el pago efectivo"
-        if comp else
-        f"más {mor} por concepto de {_MORA} calculados al {fmt_date(ledger.params.cutoff_date)}, "
-        f"más los intereses moratorios que se devenguen hasta el pago efectivo")
+    if ledger.payments_total > 0:
+        interest_petition = (
+            f"más {intr} por concepto de intereses devengados y no pagados calculados al "
+            f"{fmt_date(ledger.params.cutoff_date)}, más los intereses moratorios que se devenguen "
+            f"hasta el pago efectivo")
+    else:
+        interest_petition = _interest_text(comp, mor, ledger)
+
 
     blocks = [
         Block("banner", BANNER),

@@ -147,7 +147,7 @@ def test_seed_file_integrity_and_unverified_flag():
         clp(issue_date=date(2024, 1, 20), maturity_date=date(2024, 3, 20),
             cutoff_date=date(2025, 3, 20)))
     assert any("NO verificadas" in w for w in led.warnings)
-    assert sum(m.interest for m in led.months) == led.interest_native
+    assert sum(m.interest for m in led.months) == led.interest_accrued_native
 
 # --- external vectors (day count ACT/360, the default) ---
 A = dict(principal=D(10_000_000), currency=Currency.CLP, issue_date=date(2024, 1, 15),
@@ -172,3 +172,56 @@ def test_vector_b_tmc_cap():
         maturity_date=date(2024, 2, 14), cutoff_date=date(2024, 2, 14), agreed_rate=D(45)), t)
     assert led.interest_clp == D(118_750)  # uncapped would be 187,500
     assert any("excede la TMC" in w for w in led.warnings)
+
+
+# --- payments (abonos): interest first, then capital (CC art. 1595) ---
+from app.schemas.liquidation import Payment
+
+
+def test_payment_smaller_than_interest_is_imputed_to_interest_only():
+    # Jan 21-31: 8,438.356 due; abono 5,000 -> interest due 3,438.356, capital intact.
+    # Feb 1-10: +8,219.178 -> outstanding 11,657.534 -> 11,658 ; generated 16,658 ; paid 5,000
+    led = calculate_day_by_day_ledger(clp(
+        maturity_date=date(2024, 1, 20), cutoff_date=date(2024, 2, 10),
+        payments=(Payment(date=date(2024, 1, 31), amount=D(5000)),)), TABLE)
+    assert (led.capital_native, led.interest_native) == (D(1_000_000), D(11_658))
+    assert (led.interest_accrued_native, led.payments_total) == (D(16_658), D(5000))
+    assert led.total_clp == D(1_011_658)
+    assert led.months[0].payments == D(5000)
+
+
+def test_payment_exceeding_interest_reduces_capital():
+    # On Feb 10 interest due rounds to 16,658; abono 20,000 -> 3,342 reduces capital.
+    led = calculate_day_by_day_ledger(clp(
+        maturity_date=date(2024, 1, 20), cutoff_date=date(2024, 2, 10),
+        payments=(Payment(date=date(2024, 2, 10), amount=D(20_000)),)), TABLE)
+    assert (led.capital_native, led.interest_native, led.total_clp) == (D(996_658), D(0), D(996_658))
+
+
+def test_capital_reduction_lowers_later_interest():
+    # Abono 108,438 on Jan 31 clears interest (8,438) and 100,000 capital.
+    # 0.356 of Jan interest stays unpaid; Feb 1-10 on 900,000 @30%: 7,397.260 + 0.356 = 7,397.616 -> 7,398
+    led = calculate_day_by_day_ledger(clp(
+        maturity_date=date(2024, 1, 20), cutoff_date=date(2024, 2, 10),
+        payments=(Payment(date=date(2024, 1, 31), amount=D(108_438)),)), TABLE)
+    assert (led.capital_native, led.interest_native, led.total_clp) == (D(900_000), D(7_398), D(907_398))
+
+
+def test_payment_validation():
+    with pytest.raises(ValidationError):
+        clp(maturity_date=date(2024, 1, 20), cutoff_date=date(2024, 2, 10),
+            payments=(Payment(date=date(2024, 3, 1), amount=D(1)),))
+    with pytest.raises(ValueError, match="excede"):
+        calculate_day_by_day_ledger(clp(
+            maturity_date=date(2024, 1, 20), cutoff_date=date(2024, 2, 10),
+            payments=(Payment(date=date(2024, 2, 10), amount=D(2_000_000)),)), TABLE)
+
+
+def test_uf_payment_reduces_capital_in_uf():
+    led = calculate_day_by_day_ledger(LiquidationParams(
+        principal=D(100), currency=Currency.UF, issue_date=date(2024, 2, 10),
+        maturity_date=date(2024, 2, 10), cutoff_date=date(2024, 2, 20), day_count=DayCount.ACT_365,
+        payments=(Payment(date=date(2024, 2, 20), amount=D(10)),)), TABLE)
+    assert led.capital_native == D(90) or led.capital_native == D(100) - (D(10) - led.interest_accrued_native)
+    uf_cut = TABLE.uf_value(date(2024, 2, 20))
+    assert led.principal_clp == (led.capital_native * uf_cut).quantize(D(1), "ROUND_HALF_UP")

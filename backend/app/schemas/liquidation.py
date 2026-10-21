@@ -37,6 +37,16 @@ class Phase(str, Enum):
     MORATORY = "moratory"  # day after maturity -> cut-off
 
 
+class Payment(BaseModel):
+    """Abono, in the same currency as the principal (CLP or UF). Imputed first to
+    accrued interest, then to capital (Código Civil art. 1595)."""
+
+    model_config = ConfigDict(frozen=True)
+
+    date: date
+    amount: Decimal = Field(gt=0)
+
+
 class LiquidationParams(BaseModel):
     model_config = ConfigDict(frozen=True)
 
@@ -49,6 +59,7 @@ class LiquidationParams(BaseModel):
         default=None, ge=0, description="Annual agreed interest, in percent"
     )
     day_count: DayCount = DayCount.ACT_360
+    payments: tuple[Payment, ...] = ()
 
     @model_validator(mode="after")
     def _check_dates(self) -> LiquidationParams:
@@ -56,6 +67,9 @@ class LiquidationParams(BaseModel):
             raise ValueError("maturity_date cannot precede issue_date")
         if self.cutoff_date < self.maturity_date:
             raise ValueError("cutoff_date cannot precede maturity_date")
+        for p in self.payments:
+            if not self.issue_date < p.date <= self.cutoff_date:
+                raise ValueError("payment date must fall after issue_date and not after cutoff_date")
         return self
 
 
@@ -79,8 +93,11 @@ class LedgerDay(BaseModel):
     annual_rate: Decimal
     uf_value: Decimal | None
     readjustment_factor: Decimal | None
-    capital: Decimal  # native units (CLP or UF)
+    capital: Decimal  # capital accruing interest that day, native units (CLP or UF)
     capital_clp: Decimal
+    payment: Decimal = Decimal(0)  # abono applied at the end of the day, native units
+    capital_end: Decimal = Decimal(0)  # capital after the day's abono
+    interest_due: Decimal = Decimal(0)  # generated and unpaid after the day's abono
     daily_interest: Decimal  # native units, unrounded (Decimal precision)
     accrued_interest: Decimal  # native units, unrounded
 
@@ -90,7 +107,8 @@ class LedgerMonth(BaseModel):
     days: int
     annual_rate: Decimal  # rate of the last day of the month
     capital: Decimal
-    interest: Decimal  # native units, rounded; months sum exactly to the total
+    interest: Decimal  # interest generated in the month, native, rounded; months sum to the total generated
+    payments: Decimal = Decimal(0)
     accrued_interest: Decimal  # rounded cumulative, native units
     uf_value_end: Decimal | None
     accumulated_total_clp: Decimal
@@ -101,10 +119,13 @@ class LiquidationLedger(BaseModel):
     category: RateCategory
     days: list[LedgerDay]
     months: list[LedgerMonth]
-    principal_clp: Decimal
-    interest_native: Decimal  # rounded: CLP -> 0 dp, UF -> 4 dp
+    principal_clp: Decimal  # capital outstanding at cut-off
+    interest_native: Decimal  # interest outstanding (generated - paid): CLP 0 dp, UF 4 dp
     interest_clp: Decimal
     total_clp: Decimal
+    capital_native: Decimal = Decimal(0)  # capital outstanding, native units
+    interest_accrued_native: Decimal = Decimal(0)  # total interest generated
+    payments_total: Decimal = Decimal(0)
     day_count: DayCount
     rate_table_verified: bool
     warnings: list[str] = Field(default_factory=list)

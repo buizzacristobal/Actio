@@ -156,3 +156,17 @@ def test_patrocinio_designated_by_creditor_not_self_appointed():
     assert "representada legalmente por Juan Pérez, RUT 12.345.678-5, gerente general" in patro
     assert "Ley N° 18.120" in patro and "designo" not in txt and "confiero" not in txt
     assert not any(b.text.startswith("María Soto, abogado") for b in blocks)
+
+
+def test_lawsuit_with_payments_states_abonos_and_outstanding():
+    from app.schemas.liquidation import Payment
+    from tests.test_calculator import TABLE
+    p = pagare(agreed_rate_annual=None)
+    led = calculate_day_by_day_ledger(LiquidationParams(
+        principal=p.amount, currency=p.currency, issue_date=p.issue_date, maturity_date=p.maturity_date,
+        cutoff_date=date(2024, 2, 10), day_count=DayCount.ACT_365,
+        payments=(Payment(date=date(2024, 2, 10), amount=D(20_000)),)), TABLE)
+    txt = doc_text(build_lawsuit(p, led, ATT))
+    assert "abonos por un total de $20.000" in txt and "artículo 1595 del Código Civil" in txt
+    assert "pagaré por $1.000.000" in txt and "por la suma de $988.219 por concepto de capital" in txt
+    assert "compensatorios" not in txt

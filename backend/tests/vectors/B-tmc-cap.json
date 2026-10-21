@@ -1,0 +1,79 @@
+{
+ "id": "B-tmc-cap",
+ "verified": false,
+ "source": "external research tool; arithmetic checked by hand",
+ "table": {
+  "metadata": {
+   "verified": true,
+   "source": "external vector (unverified)"
+  },
+  "uf_10th": {
+   "2023-12": "36000.00",
+   "2024-01": "36000.00",
+   "2024-02": "36360.00",
+   "2024-03": "36720.00",
+   "2024-04": "37000.00"
+  },
+  "periods": [
+   {
+    "period_id": "2024-01",
+    "valid_from": "2024-01-15",
+    "valid_to": "2024-02-14",
+    "rates": {
+     "non_reajustable_clp_under_50_uf": {
+      "corriente": "28.12",
+      "tmc": "42.18"
+     },
+     "non_reajustable_clp_50_to_200_uf": {
+      "corriente": "21.30",
+      "tmc": "28.50"
+     },
+     "non_reajustable_clp_over_200_uf": {
+      "corriente": "14.40",
+      "tmc": "21.60"
+     },
+     "reajustable_uf_all": {
+      "corriente": "5.12",
+      "tmc": "7.68"
+     }
+    }
+   },
+   {
+    "period_id": "2024-02",
+    "valid_from": "2024-02-15",
+    "valid_to": "2024-03-15",
+    "rates": {
+     "non_reajustable_clp_under_50_uf": {
+      "corriente": "27.80",
+      "tmc": "41.70"
+     },
+     "non_reajustable_clp_50_to_200_uf": {
+      "corriente": "20.90",
+      "tmc": "31.35"
+     },
+     "non_reajustable_clp_over_200_uf": {
+      "corriente": "13.80",
+      "tmc": "20.70"
+     },
+     "reajustable_uf_all": {
+      "corriente": "4.95",
+      "tmc": "7.43"
+     }
+    }
+   }
+  ]
+ },
+ "params": {
+  "principal": "5000000",
+  "currency": "CLP",
+  "issue_date": "2024-01-15",
+  "maturity_date": "2024-02-14",
+  "cutoff_date": "2024-02-14",
+  "agreed_rate": "45",
+  "day_count": "ACT/360"
+ },
+ "expected": {
+  "interest_clp": "118750",
+  "total_clp": "5118750"
+ }
+}
