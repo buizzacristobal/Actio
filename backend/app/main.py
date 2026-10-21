@@ -45,6 +45,11 @@ def create_app() -> FastAPI:
     async def _pdf(_: Request, exc: PdfUnavailableError):
         return _err(501, str(exc))
 
+    @app.exception_handler(RuntimeError)
+    async def _runtime(_: Request, exc: RuntimeError):
+        # configuration problems (e.g. OCR not configured) are actionable, not leaks
+        return _err(422, str(exc)) if "no configurado" in str(exc) else _err(500, "Error interno")
+
     @app.exception_handler(ValueError)
     async def _value(_: Request, exc: ValueError):
         return _err(422, str(exc))

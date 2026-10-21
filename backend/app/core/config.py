@@ -28,6 +28,7 @@ class Settings:
     rate_limit_per_min: int = field(default_factory=lambda: int(os.environ.get("RATE_LIMIT_PER_MIN", "60")))
     max_body_bytes: int = field(
         default_factory=lambda: int(os.environ.get("MAX_BODY_BYTES", str(12 * 1024 * 1024))))
+    llm_vision_model: str | None = field(default_factory=lambda: os.environ.get("LLM_VISION_MODEL") or None)
     llm_model: str = field(default_factory=lambda: os.environ.get("LLM_MODEL", "claude-sonnet-5-5"))
 
 

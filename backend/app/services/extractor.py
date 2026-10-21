@@ -7,13 +7,14 @@ paths and rule messages, never document text or input values.
 """
 from __future__ import annotations
 
+import base64
 import json
 from typing import Any, Protocol
 
 from pydantic import TypeAdapter, ValidationError
 
 from app.core.config import Settings
-from app.schemas.instrument import ExtractionResult, Instrument
+from app.schemas.instrument import ExtractionResult, Instrument, Pagare
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
 MAX_ATTEMPTS = 2
@@ -49,6 +50,16 @@ class AnthropicClient:
         self._client = anthropic.Anthropic(api_key=api_key)
         self._model = model
 
+    def transcribe(self, image: bytes, mime: str) -> str:
+        content: list[Any] = [
+            {"type": "image", "source": {"type": "base64", "media_type": mime,
+                                         "data": base64.b64encode(image).decode()}},
+            {"type": "text", "text": OCR_PROMPT},
+        ]
+        msg = self._client.messages.create(
+            model=self._model, max_tokens=4096, messages=[{"role": "user", "content": content}])
+        return "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
+
     def complete(self, system: str, user: str) -> str:
         msg = self._client.messages.create(
             model=self._model, max_tokens=4096,
@@ -57,17 +68,38 @@ class AnthropicClient:
         return "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
 
 
+OCR_PROMPT = ("Transcribe literalmente todo el texto visible del documento, en el mismo orden. "
+              "No resumas, no corrijas, no interpretes ni agregues nada.")
+
+
+class VisionClient(Protocol):
+    def transcribe(self, image: bytes, mime: str) -> str: ...
+
+
 class OpenAICompatibleClient:
     """Any OpenAI-compatible endpoint (OpenRouter, Qwen, vLLM, ...) in JSON mode."""
 
     def __init__(self, model: str, api_key: str | None = None, base_url: str | None = None,
-                 client: object | None = None) -> None:
+                 client: object | None = None, vision_model: str | None = None) -> None:
         if client is None:
             import openai
 
             client = openai.OpenAI(api_key=api_key, base_url=base_url)
         self._client = client
         self._model = model
+        self._vision_model = vision_model
+
+    def transcribe(self, image: bytes, mime: str) -> str:
+        if not self._vision_model:
+            raise RuntimeError("OCR no configurado: defina LLM_VISION_MODEL con un modelo con visión")
+        url = f"data:{mime};base64,{base64.b64encode(image).decode()}"
+        resp = self._client.chat.completions.create(  # type: ignore[attr-defined]
+            model=self._vision_model, temperature=0,
+            messages=[{"role": "user", "content": [
+                {"type": "text", "text": OCR_PROMPT},
+                {"type": "image_url", "image_url": {"url": url}}]}],
+        )
+        return resp.choices[0].message.content or ""
 
     def complete(self, system: str, user: str) -> str:
         schema = json.dumps(TypeAdapter(Instrument).json_schema(), ensure_ascii=False)
@@ -87,9 +119,10 @@ def build_client(settings: Settings) -> LLMClient:
         return AnthropicClient(model=settings.llm_model, api_key=settings.llm_api_key)
     if settings.llm_provider == "openai_compatible":
         if not settings.llm_api_key:
-            raise RuntimeError("LLM_API_KEY es obligatorio para openai_compatible")
+            raise RuntimeError("LLM_API_KEY no configurado para openai_compatible")
         return OpenAICompatibleClient(
-            model=settings.llm_model, api_key=settings.llm_api_key, base_url=settings.llm_base_url)
+            model=settings.llm_model, api_key=settings.llm_api_key, base_url=settings.llm_base_url,
+            vision_model=settings.llm_vision_model)
     raise RuntimeError(f"LLM_PROVIDER desconocido: {settings.llm_provider}")
 
 
@@ -101,6 +134,27 @@ def _first_json_object(text: str) -> dict:
     if not isinstance(obj, dict):
         raise ValueError("la respuesta JSON no es un objeto")
     return obj
+
+
+def find_missing(i: Instrument) -> list[str]:
+    """Optional fields that matter for the lawsuit but were not found in the document."""
+    missing: list[str] = []
+    if i.jurisdiction is None:
+        missing.append("jurisdiction")
+    for who, party in (("creditor", i.creditor), ("debtor", i.debtor)):
+        if not party.address:
+            missing.append(f"{who}.address")
+    if isinstance(i, Pagare):
+        if i.agreed_rate_annual is None:
+            missing.append("agreed_rate_annual")
+        if i.signature_authorized is None:
+            missing.append("signature_authorized")
+    else:
+        if i.due_date is None:
+            missing.append("due_date")
+        if i.receipt_acknowledged is None:
+            missing.append("receipt_acknowledged")
+    return missing
 
 
 def _safe_error(exc: Exception) -> str:
@@ -124,7 +178,7 @@ def extract_instrument(document_text: str, client: LLMClient) -> ExtractionResul
         raw = client.complete(SYSTEM_PROMPT, prompt)
         try:
             instrument = adapter.validate_python(_first_json_object(raw))
-            return ExtractionResult(instrument=instrument)
+            return ExtractionResult(instrument=instrument, missing_fields=find_missing(instrument))
         except (ValueError, ValidationError) as exc:
             last_error = _safe_error(exc)
     raise ExtractionError(f"extracción inválida tras {MAX_ATTEMPTS} intentos: {last_error}")
