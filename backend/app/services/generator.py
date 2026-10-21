@@ -5,12 +5,18 @@ from __future__ import annotations
 from io import BytesIO
 
 from docx import Document
+from docx.document import Document as DocumentT
 from docx.enum.table import WD_TABLE_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_BREAK
 from docx.shared import Cm, Pt, RGBColor
 
 from app.engine.legal_templates import (
-    Block, build_lawsuit, fmt_clp, fmt_date, fmt_pct, fmt_uf,
+    Block,
+    build_lawsuit,
+    fmt_clp,
+    fmt_date,
+    fmt_pct,
+    fmt_uf,
 )
 from app.schemas.instrument import Attorney, Instrument
 from app.schemas.liquidation import Currency, LiquidationLedger
@@ -18,7 +24,7 @@ from app.schemas.liquidation import Currency, LiquidationLedger
 FONT = "Times New Roman"
 
 
-def _style(doc: Document) -> None:
+def _style(doc: DocumentT) -> None:
     normal = doc.styles["Normal"]
     normal.font.name = FONT
     normal.font.size = Pt(12)
@@ -30,7 +36,7 @@ def _style(doc: Document) -> None:
         s.top_margin = s.bottom_margin = Cm(2.5)
 
 
-def _para(doc: Document, text: str, *, bold=False, align=WD_ALIGN_PARAGRAPH.JUSTIFY,
+def _para(doc: DocumentT, text: str, *, bold=False, align=WD_ALIGN_PARAGRAPH.JUSTIFY,
           color: RGBColor | None = None):
     p = doc.add_paragraph()
     p.alignment = align
@@ -41,7 +47,7 @@ def _para(doc: Document, text: str, *, bold=False, align=WD_ALIGN_PARAGRAPH.JUST
     return p
 
 
-def _render_blocks(doc: Document, blocks: list[Block]) -> None:
+def _render_blocks(doc: DocumentT, blocks: list[Block]) -> None:
     for b in blocks:
         if b.kind == "banner":
             _para(doc, b.text, bold=True, align=WD_ALIGN_PARAGRAPH.CENTER,
@@ -56,7 +62,7 @@ def _render_blocks(doc: Document, blocks: list[Block]) -> None:
             _para(doc, b.text)
 
 
-def _schedule(doc: Document, ledger: LiquidationLedger) -> None:
+def _schedule(doc: DocumentT, ledger: LiquidationLedger) -> None:
     doc.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
     _para(doc, "ANEXO: LIQUIDACIÓN DE LA DEUDA", bold=True, align=WD_ALIGN_PARAGRAPH.CENTER)
     p = ledger.params
@@ -69,14 +75,14 @@ def _schedule(doc: Document, ledger: LiquidationLedger) -> None:
     table = doc.add_table(rows=1, cols=len(headers))
     table.style = "Table Grid"
     table.alignment = WD_TABLE_ALIGNMENT.CENTER
-    for cell, h in zip(table.rows[0].cells, headers):
+    for cell, h in zip(table.rows[0].cells, headers, strict=True):
         cell.text = h
         cell.paragraphs[0].runs[0].bold = True
     for m in ledger.months:
         row = table.add_row().cells
         for cell, v in zip(row, [m.period, str(m.days), fmt_pct(m.annual_rate),
                                  money(m.interest), money(m.accrued_interest),
-                                 fmt_clp(m.accumulated_total_clp)]):
+                                 fmt_clp(m.accumulated_total_clp)], strict=True):
             cell.text = v
     for row in table.rows:
         for cell in row.cells:

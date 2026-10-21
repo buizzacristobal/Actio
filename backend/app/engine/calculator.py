@@ -130,10 +130,11 @@ def calculate_day_by_day_ledger(
         days.append(
             LedgerDay(
                 date=d, phase=phase, annual_rate=rate_pct, uf_value=uf_d,
-                readjustment_factor=(uf_d / uf_maturity) if is_uf else None,
+                readjustment_factor=(uf_d / uf_maturity)
+                if uf_d is not None and uf_maturity is not None else None,
                 capital=params.principal,
-                capital_clp=_round(params.principal * uf_d, Decimal(1)) if is_uf
-                else params.principal,
+                capital_clp=_round(params.principal * uf_d, Decimal(1))
+                if uf_d is not None else params.principal,
                 daily_interest=daily, accrued_interest=accrued,
             )
         )
@@ -158,7 +159,7 @@ def calculate_day_by_day_ledger(
                 interest=cum_rounded - prev_rounded, accrued_interest=cum_rounded,
                 uf_value_end=uf_end,
                 accumulated_total_clp=_round(total_native * uf_end, Decimal(1))
-                if is_uf else total_native,
+                if uf_end is not None else total_native,
             )
         )
         prev_rounded = cum_rounded

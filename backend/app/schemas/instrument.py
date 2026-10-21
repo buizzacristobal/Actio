@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from datetime import date
 from decimal import Decimal
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -71,7 +71,7 @@ class Pagare(_InstrumentBase):
     )
 
     @model_validator(mode="after")
-    def _dates(self) -> "Pagare":
+    def _dates(self) -> Pagare:
         if self.maturity_date < self.issue_date:
             raise ValueError("maturity_date anterior a issue_date")
         return self
@@ -91,13 +91,13 @@ class FacturaElectronica(_InstrumentBase):
     )
 
     @model_validator(mode="after")
-    def _totals(self) -> "FacturaElectronica":
+    def _totals(self) -> FacturaElectronica:
         if self.net_amount + self.vat_amount != self.total_amount:
             raise ValueError("net_amount + vat_amount no coincide con total_amount")
         return self
 
 
-Instrument = Annotated[Union[Pagare, FacturaElectronica], Field(discriminator="kind")]
+Instrument = Annotated[Pagare | FacturaElectronica, Field(discriminator="kind")]
 
 
 class ExtractionResult(BaseModel):

@@ -1,7 +1,6 @@
 import type { Attorney, DayCount, Instrument, Ledger, LiquidationParams } from "./types";
 
-const BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
-const KEY = process.env.NEXT_PUBLIC_API_KEY; // dev only: anything NEXT_PUBLIC_ is visible to the browser
+const BASE = ""; // same-origin: requests go through the Next.js server proxy (src/app/api/v1)
 
 export class ApiError extends Error {}
 
@@ -10,7 +9,7 @@ async function post(path: string, body: unknown): Promise<Response> {
   try {
     res = await fetch(`${BASE}/api/v1${path}`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", ...(KEY ? { "X-API-Key": KEY } : {}) },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
   } catch {

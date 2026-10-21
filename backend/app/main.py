@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from app.api.v1.router import api_router
 from app.core.config import get_settings
+from app.core.middleware import HardeningMiddleware
 from app.engine.cmf_rates import RateNotFoundError
 from app.services.extractor import ExtractionError
 
@@ -17,8 +18,12 @@ def _err(status: int, msg: str) -> JSONResponse:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="LegalTech Chile Engine", version="0.1.0")
+    settings = get_settings()
     app.add_middleware(
-        CORSMiddleware, allow_origins=get_settings().cors_origins,
+        HardeningMiddleware, rate_limit_per_min=settings.rate_limit_per_min,
+        max_body_bytes=settings.max_body_bytes)
+    app.add_middleware(
+        CORSMiddleware, allow_origins=settings.cors_origins,
         allow_methods=["POST", "GET"], allow_headers=["Content-Type", "X-API-Key"])
 
     # Zero data retention: error bodies never echo client documents or inputs.
@@ -45,7 +50,7 @@ def create_app() -> FastAPI:
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok"}
+        return {"status": "ok", "version": app.version}
 
     app.include_router(api_router)
     return app

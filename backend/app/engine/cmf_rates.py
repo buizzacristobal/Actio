@@ -5,11 +5,12 @@ All values are Decimals parsed from strings; floats never enter the engine.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any
 
 from app.schemas.liquidation import RateCategory
 

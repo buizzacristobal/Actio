@@ -51,7 +51,7 @@ class LiquidationParams(BaseModel):
     day_count: DayCount = DayCount.ACT_360
 
     @model_validator(mode="after")
-    def _check_dates(self) -> "LiquidationParams":
+    def _check_dates(self) -> LiquidationParams:
         if self.maturity_date < self.issue_date:
             raise ValueError("maturity_date cannot precede issue_date")
         if self.cutoff_date < self.maturity_date:

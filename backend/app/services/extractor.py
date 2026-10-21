@@ -8,12 +8,11 @@ paths and rule messages, never document text or input values.
 from __future__ import annotations
 
 import json
-from typing import Protocol
+from typing import Any, Protocol
 
 from pydantic import TypeAdapter, ValidationError
 
 from app.core.config import Settings
-
 from app.schemas.instrument import ExtractionResult, Instrument
 
 DEFAULT_MODEL = "claude-sonnet-5-5"
@@ -52,10 +51,10 @@ class AnthropicClient:
 
     def complete(self, system: str, user: str) -> str:
         msg = self._client.messages.create(
-            model=self._model, max_tokens=4096, temperature=0,
+            model=self._model, max_tokens=4096,
             system=system, messages=[{"role": "user", "content": user}],
         )
-        return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+        return "".join(getattr(b, "text", "") for b in msg.content if getattr(b, "type", "") == "text")
 
 
 class OpenAICompatibleClient:
@@ -115,7 +114,7 @@ def extract_instrument(document_text: str, client: LLMClient) -> ExtractionResul
     """Extract and validate an instrument from raw text / OCR output."""
     if not document_text.strip():
         raise ExtractionError("documento vacío")
-    adapter = TypeAdapter(Instrument)
+    adapter: TypeAdapter[Any] = TypeAdapter(Instrument)
     user = f"Documento:\n\"\"\"\n{document_text}\n\"\"\""
     last_error = ""
     for _ in range(MAX_ATTEMPTS):

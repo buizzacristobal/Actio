@@ -74,7 +74,9 @@ from types import SimpleNamespace
 
 from app.core.config import Settings
 from app.services.extractor import (
-    AnthropicClient, OpenAICompatibleClient, build_client,
+    AnthropicClient,
+    OpenAICompatibleClient,
+    build_client,
 )
 
 

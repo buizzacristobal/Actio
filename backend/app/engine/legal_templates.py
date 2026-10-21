@@ -11,7 +11,11 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import Literal
 
 from app.schemas.instrument import (
-    Attorney, FacturaElectronica, Instrument, LegalRepresentative, Pagare, Party,
+    Attorney,
+    Instrument,
+    LegalRepresentative,
+    Pagare,
+    Party,
 )
 from app.schemas.liquidation import Currency, LiquidationLedger, Phase
 
@@ -75,7 +79,7 @@ def _interest_parts(ledger: LiquidationLedger) -> tuple[str | None, str]:
     conv = conv_days[-1].accrued_interest.quantize(step, ROUND_HALF_UP) if conv_days else Decimal(0)
     mor = ledger.interest_native - conv
     if is_uf:
-        uf_cut = ledger.days[-1].uf_value if ledger.days else Decimal(0)
+        uf_cut = (ledger.days[-1].uf_value if ledger.days else None) or Decimal(0)
         conv_clp = (conv * uf_cut).quantize(Decimal(1), ROUND_HALF_UP)
         mor_clp = ledger.interest_clp - conv_clp
         show = lambda n, c: f"{fmt_uf(n)} ({fmt_clp(c)})"

@@ -8,10 +8,14 @@ import pytest
 from pydantic import ValidationError
 
 from app.engine.calculator import (
-    apply_tmc_cap, calculate_day_by_day_ledger, get_applicable_rate, select_category,
+    apply_tmc_cap,
+    calculate_day_by_day_ledger,
+    get_applicable_rate,
+    select_category,
 )
 from app.engine.cmf_rates import RateNotFoundError, RateTable, load_default_table
 from app.schemas.liquidation import Currency, DayCount, LiquidationParams, RateCategory
+
 
 def _rates(under50, mid, over, uf, tmc_mid=None):
     r = lambda c, t=None: {"corriente": str(c), "tmc": str(t if t is not None else D(str(c)) * D("1.5"))}

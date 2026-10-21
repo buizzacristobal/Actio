@@ -34,7 +34,8 @@ def client(app):
 
 
 def test_health(client):
-    assert client.get("/health").json() == {"status": "ok"}
+    j = client.get("/health").json()
+    assert j["status"] == "ok" and j["version"]
 
 
 def test_extract_ok_and_bad_output(app, client):
@@ -99,3 +100,17 @@ def test_api_key_enforced_when_configured(app):
             "maturity_date": "2024-01-21", "cutoff_date": "2024-01-22"}
     assert c.post("/api/v1/liquidate", json=body).status_code == 401
     assert c.post("/api/v1/liquidate", json=body, headers={"X-API-Key": "k"}).status_code == 200
+
+
+def test_hardening_headers_rate_limit_and_body_cap(monkeypatch):
+    monkeypatch.setenv("RATE_LIMIT_PER_MIN", "3")
+    monkeypatch.setenv("MAX_BODY_BYTES", "500")
+    c = TestClient(create_app())
+    r = c.get("/health")
+    assert r.headers["x-content-type-options"] == "nosniff" and r.headers["x-request-id"]
+    body = {"principal": "1000", "currency": "CLP", "issue_date": "2024-01-20",
+            "maturity_date": "2024-01-21", "cutoff_date": "2024-01-22"}
+    codes = [c.post("/api/v1/liquidate", json=body).status_code for _ in range(4)]
+    assert codes == [200, 200, 200, 429]
+    big = TestClient(create_app()).post("/api/v1/extract", json={"text": "x" * 2000})
+    assert big.status_code == 413

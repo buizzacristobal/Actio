@@ -1,0 +1,18 @@
+services:
+  backend:
+    build: ./backend
+    environment:
+      - API_KEY=${API_KEY:-}
+      - CORS_ORIGINS=http://localhost:3000
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - LLM_BASE_URL=${LLM_BASE_URL:-}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - LLM_MODEL=${LLM_MODEL:-claude-sonnet-5-5}
+    expose: ["8000"]
+  frontend:
+    build: ./frontend
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - API_KEY=${API_KEY:-}
+    ports: ["3000:3000"]
+    depends_on: [backend]
